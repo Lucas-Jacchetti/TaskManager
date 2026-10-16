@@ -28,9 +28,8 @@ export class Task {
     @Column({ type: 'enum', enum: TaskType })
     type: TaskType;
 
-    // nulo nas tarefas semanais
     @Column('int', { array: true, nullable: true })
-    daysOfWeek?: number[];
+    daysOfWeek?: number[] | null;
 
     @Index()
     @Column()

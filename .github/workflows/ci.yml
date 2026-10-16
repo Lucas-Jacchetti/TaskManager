@@ -30,7 +30,7 @@ jobs:
         run: npm run build
 
       - name: Testes unitários com cobertura mínima
-        run: npm run test:cov -- --ci --passWithNoTests #provisorio para o primeiro commit
+        run: npm run test:cov -- --ci
 
   security:
     name: Verificações de segurança
@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # o Gitleaks varre o histórico inteiro
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
