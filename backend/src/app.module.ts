@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { buildTypeOrmOptions } from './config/typeorm.config';
+import { TasksModule } from './features/tasks/task.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { buildTypeOrmOptions } from './config/typeorm.config';
       useFactory: (config: ConfigService) =>
         buildTypeOrmOptions(config.getOrThrow<string>('DATABASE_URL')),
     }),
+    TasksModule
   ],
 })
 export class AppModule {}
