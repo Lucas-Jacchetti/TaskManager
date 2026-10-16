@@ -4,24 +4,23 @@ import {
     JoinColumn,
     ManyToOne,
     PrimaryGeneratedColumn,
-    type Relation,
     Unique,
+    type Relation,
 } from 'typeorm';
-import { Task } from './task.entity';
+import { TaskOccurrence } from './task-ocurrence.entity';
 
 @Entity('task_completions')
-@Unique(['taskId', 'referenceDate'])
+@Unique(['occurrenceId'])
 export class TaskCompletion {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
     @Column()
-    taskId: string;
+    occurrenceId: string;
 
-    @ManyToOne(() => Task, (task) => task.completions, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'taskId' })
-    task: Relation<Task>;
-
-    @Column({ type: 'date' })
-    referenceDate: string;
+    @ManyToOne(() => TaskOccurrence, (occurrence) => occurrence.completions, {
+        onDelete: 'CASCADE',
+    })
+    @JoinColumn({ name: 'occurrenceId' })
+    occurrence: Relation<TaskOccurrence>;
 }

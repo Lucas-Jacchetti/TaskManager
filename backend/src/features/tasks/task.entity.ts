@@ -12,7 +12,8 @@ import {
 } from 'typeorm';
 import { TaskType } from './task-type.enum';
 import { User } from '../users/user.entity';
-import { TaskCompletion } from './task-completion.entity';
+import { TaskRecurrence } from './task-recurrence.enum';
+import { TaskOccurrence } from './task-ocurrence.entity';
 
 @Entity('tasks')
 export class Task {
@@ -28,6 +29,9 @@ export class Task {
     @Column({ type: 'enum', enum: TaskType })
     type: TaskType;
 
+    @Column({type: 'enum', enum: TaskRecurrence, default: TaskRecurrence.ONCE})
+    recurrence: TaskRecurrence;
+
     @Column('int', { array: true, nullable: true })
     daysOfWeek?: number[] | null;
 
@@ -39,8 +43,8 @@ export class Task {
     @JoinColumn({ name: 'userId' })
     user: Relation<User>;
 
-    @OneToMany(() => TaskCompletion, (completion) => completion.task)
-    completions: Relation<TaskCompletion[]>;
+    @OneToMany(() => TaskOccurrence, (occurrence) => occurrence.task,)
+    occurrences: Relation<TaskOccurrence[]>;
 
     @CreateDateColumn()
     createdAt: Date;

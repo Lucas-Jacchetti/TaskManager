@@ -12,8 +12,10 @@ import { UsersModule } from './features/users/user.module';
     ConfigModule.forRoot({
       isGlobal: true,
       validate: (config: Record<string, unknown>) => {
-        if (!config.DATABASE_URL) {
-          throw new Error('A variável DATABASE_URL é obrigatória');
+        for (const key of ['DATABASE_URL', 'JWT_SECRET']) {
+          if (!config[key]) {
+            throw new Error(`A variável ${key} é obrigatória`);
+          }
         }
         return config;
       },
