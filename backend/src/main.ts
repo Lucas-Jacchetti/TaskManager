@@ -15,7 +15,7 @@ async function bootstrap() {
   );
 
   const config = new DocumentBuilder()
-    .setTitle('Task SaaS API')
+    .setTitle('Task Manager API')
     .setDescription('API de tarefas diárias, semanais e customizadas')
     .setVersion('1.0')
     .addBearerAuth()

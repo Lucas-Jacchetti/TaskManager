@@ -3,19 +3,21 @@ import {
   ExecutionContext,
   UnauthorizedException,
 } from '@nestjs/common';
-import { isUUID } from 'class-validator';
 import type { Request } from 'express';
 
-// temporario
-export function extractUserId(request: Pick<Request, 'headers'>): string {
-  const value = request.headers['x-user-id'];
-  if (typeof value !== 'string' || !isUUID(value)) {
-    throw new UnauthorizedException('Cabeçalho x-user-id ausente ou inválido');
-  }
-  return value;
-}
+type AuthenticatedRequest = Request & {
+  user?: { userId: string };
+};
 
 export const CurrentUserId = createParamDecorator(
-  (_data: unknown, ctx: ExecutionContext) =>
-    extractUserId(ctx.switchToHttp().getRequest<Request>()),
+  (_data: unknown, ctx: ExecutionContext): string => {
+    const request =
+      ctx.switchToHttp().getRequest<AuthenticatedRequest>();
+
+    if (!request.user?.userId) {
+      throw new UnauthorizedException('Usuário não autenticado');
+    }
+
+    return request.user.userId;
+  },
 );

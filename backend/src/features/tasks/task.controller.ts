@@ -1,6 +1,7 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiBearerAuth,
   ApiCreatedResponse,
   ApiHeader,
   ApiTags,
@@ -10,18 +11,16 @@ import { CurrentUserId } from '../../common/decorators/current-user-id.decorator
 import { CreateTaskDto } from './dto/create-task.dto';
 import { TasksService } from './task.service';
 import { TaskResponseDto } from './dto/response-task.dto';
+import { AuthGuard } from '@nestjs/passport';
 
 @ApiTags('tasks')
+@ApiBearerAuth()
 @Controller('tasks')
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
   @Post()
-  @ApiHeader({
-    name: 'x-user-id',
-    required: true,
-    description: 'TEMPORÁRIO: será substituído pela autenticação JWT',
-  })
+  @UseGuards(AuthGuard('jwt'))
   @ApiCreatedResponse({ type: TaskResponseDto })
   @ApiBadRequestResponse({ description: 'Dados inválidos' })
   @ApiUnauthorizedResponse({ description: 'Usuário não identificado' })
