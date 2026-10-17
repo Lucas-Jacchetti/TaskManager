@@ -114,13 +114,20 @@ describe('TasksController', () => {
     expect(result).toEqual([{ ...task, description: null }]);
   });
 
-  it('atualiza uma definição e encaminha o usuário e o id', async () => {
+  it('atualiza uma definição e encaminha o usuário, o id e a data', async () => {
     const dto = { title: 'Novo título' };
     tasksService.update.mockResolvedValue({ ...task, ...dto });
 
-    const result = await controller.update('user-1', 'task-1', dto);
+    const result = await controller.update('user-1', 'task-1', dto, {
+      date: '2026-10-16',
+    });
 
-    expect(tasksService.update).toHaveBeenCalledWith('user-1', 'task-1', dto);
+    expect(tasksService.update).toHaveBeenCalledWith(
+      'user-1',
+      'task-1',
+      dto,
+      '2026-10-16',
+    );
     expect(result).toEqual({ ...task, ...dto, description: null });
   });
 

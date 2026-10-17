@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, QueryFailedError } from 'typeorm';
 import { TasksService } from '../task.service';
 import { TaskOccurrence } from '../task-ocurrence.entity';
 import { TaskCompletion } from '../task-completion.entity';
@@ -46,11 +46,16 @@ describe('TasksService', () => {
   };
   let occurrencesRepo: {
     createQueryBuilder: jest.Mock;
-    find: jest.Mock;
     softRemove: jest.Mock;
   };
   let txTasksRepo: { create: jest.Mock; save: jest.Mock };
-  let txOccurrencesRepo: { create: jest.Mock; save: jest.Mock };
+  let txOccurrencesRepo: {
+    create: jest.Mock;
+    save: jest.Mock;
+    find: jest.Mock;
+    delete: jest.Mock;
+    createQueryBuilder: jest.Mock;
+  };
   let completionsRepo: {
     findOne: jest.Mock;
     create: jest.Mock;
@@ -68,7 +73,6 @@ describe('TasksService', () => {
     };
     occurrencesRepo = {
       createQueryBuilder: jest.fn(),
-      find: jest.fn().mockResolvedValue([]),
       softRemove: jest.fn(),
     };
 
@@ -81,6 +85,9 @@ describe('TasksService', () => {
     txOccurrencesRepo = {
       create: jest.fn((entity: Partial<TaskOccurrence>) => entity),
       save: jest.fn((entities: unknown) => Promise.resolve(entities)),
+      find: jest.fn().mockResolvedValue([]),
+      delete: jest.fn(),
+      createQueryBuilder: jest.fn(),
     };
     completionsRepo = {
       findOne: jest.fn(),
@@ -192,13 +199,27 @@ describe('TasksService', () => {
       },
     );
 
+    it('rejeita dias inválidos ao criar uma tarefa customizada', async () => {
+      const dto: CreateTaskDto = {
+        title: 'Treinar',
+        type: TaskType.CUSTOM,
+        recurrence: TaskRecurrence.ONCE,
+        daysOfWeek: [7],
+      };
+
+      await expect(service.create(userId, dto, today)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
     it('associa a tarefa ao usuário informado e copia só os campos esperados', async () => {
       const dto = {
         title: 'Ler',
         description: '20 páginas',
         type: TaskType.DAILY,
         recurrence: TaskRecurrence.RECURRING,
-        userId: 'outro-usuario', 
+        userId: 'outro-usuario',
       } as CreateTaskDto;
 
       await service.create(userId, dto, today);
@@ -216,27 +237,6 @@ describe('TasksService', () => {
   });
 
   describe('findToday', () => {
-    it('garante as ocorrências recorrentes da semana, sem duplicar', async () => {
-      const qb = createQueryBuilderMock();
-      occurrencesRepo.createQueryBuilder.mockReturnValue(qb);
-      tasksRepo.find.mockResolvedValue([
-        { id: 'task-1', type: TaskType.DAILY, daysOfWeek: ALL_DAYS },
-      ]);
-
-      await service.findToday(userId, today);
-
-      expect(tasksRepo.find).toHaveBeenCalledWith({
-        where: { userId, recurrence: TaskRecurrence.RECURRING },
-      });
-      const rows = qb.values.mock.calls[0][0] as unknown[];
-      expect(rows).toHaveLength(7);
-      expect(rows).toContainEqual({
-        taskId: 'task-1',
-        referenceDate: '2026-10-12',
-      });
-      expect(qb.orIgnore).toHaveBeenCalled();
-    });
-
     it('não grava nada quando não há tarefas recorrentes', async () => {
       const qb = createQueryBuilderMock();
       occurrencesRepo.createQueryBuilder.mockReturnValue(qb);
@@ -288,6 +288,96 @@ describe('TasksService', () => {
     });
   });
 
+  describe('geração sob demanda das ocorrências recorrentes', () => {
+    let qb: ReturnType<typeof createQueryBuilderMock>;
+
+    const dailyTask = (startDate: string) => ({
+      id: 'task-1',
+      type: TaskType.DAILY,
+      daysOfWeek: ALL_DAYS,
+      startDate,
+    });
+    const weeklyTask = (startDate: string) => ({
+      id: 'task-1',
+      type: TaskType.WEEKLY,
+      daysOfWeek: null,
+      startDate,
+    });
+
+    beforeEach(() => {
+      qb = createQueryBuilderMock();
+      occurrencesRepo.createQueryBuilder.mockReturnValue(qb);
+    });
+
+    it('gera a semana inteira quando a consulta é na segunda e a tarefa é anterior à semana', async () => {
+      tasksRepo.find.mockResolvedValue([dailyTask('2026-10-01')]);
+
+      await service.findToday(userId, '2026-10-12');
+
+      expect(tasksRepo.find).toHaveBeenCalledWith({
+        where: { userId, recurrence: TaskRecurrence.RECURRING },
+      });
+      const rows = qb.values.mock.calls[0][0] as unknown[];
+      expect(rows).toHaveLength(7);
+      expect(rows).toContainEqual({
+        taskId: 'task-1',
+        referenceDate: '2026-10-12',
+      });
+      expect(qb.orIgnore).toHaveBeenCalled();
+    });
+
+    it('gera só a partir da data consultada', async () => {
+      tasksRepo.find.mockResolvedValue([dailyTask('2026-10-01')]);
+
+      await service.findToday(userId, today);
+
+      expect(qb.values).toHaveBeenCalledWith([
+        { taskId: 'task-1', referenceDate: '2026-10-16' },
+        { taskId: 'task-1', referenceDate: '2026-10-17' },
+        { taskId: 'task-1', referenceDate: '2026-10-18' },
+      ]);
+    });
+
+    it('não gera dias anteriores à criação da tarefa', async () => {
+      tasksRepo.find.mockResolvedValue([dailyTask('2026-10-15')]);
+
+      await service.findToday(userId, '2026-10-12');
+
+      expect(qb.values).toHaveBeenCalledWith([
+        { taskId: 'task-1', referenceDate: '2026-10-15' },
+        { taskId: 'task-1', referenceDate: '2026-10-16' },
+        { taskId: 'task-1', referenceDate: '2026-10-17' },
+        { taskId: 'task-1', referenceDate: '2026-10-18' },
+      ]);
+    });
+
+    it('não gera nada para semanas anteriores à criação', async () => {
+      tasksRepo.find.mockResolvedValue([dailyTask('2026-10-15')]);
+
+      await service.findToday(userId, '2026-10-07');
+
+      expect(qb.insert).not.toHaveBeenCalled();
+    });
+
+    it('gera a ocorrência semanal na segunda mesmo consultando no meio da semana', async () => {
+      tasksRepo.find.mockResolvedValue([weeklyTask('2026-10-01')]);
+
+      await service.findWeekly(userId, today);
+
+      expect(qb.values).toHaveBeenCalledWith([
+        { taskId: 'task-1', referenceDate: '2026-10-12' },
+      ]);
+    });
+
+    it('não gera ocorrência semanal antes da semana de criação', async () => {
+      tasksRepo.find.mockResolvedValue([weeklyTask('2026-10-15')]);
+
+      await service.findWeekly(userId, '2026-10-07');
+
+      expect(qb.insert).not.toHaveBeenCalled();
+    });
+  });
+
   describe('CRUD das definições', () => {
     it('lista as definições do usuário', async () => {
       const tasks = [{ id: 'task-1', userId }];
@@ -295,6 +385,13 @@ describe('TasksService', () => {
 
       await expect(service.findAll(userId)).resolves.toBe(tasks);
       expect(tasksRepo.find).toHaveBeenCalledWith({ where: { userId } });
+    });
+
+    it('devolve a definição do próprio usuário', async () => {
+      const task = { id: 'task-1', userId };
+      tasksRepo.findOne.mockResolvedValue(task);
+
+      await expect(service.findOne(userId, 'task-1')).resolves.toBe(task);
     });
 
     it('não permite acessar uma definição de outro usuário', async () => {
@@ -308,35 +405,6 @@ describe('TasksService', () => {
       });
     });
 
-    it('atualiza a definição e preserva ocorrências já existentes', async () => {
-      const task = {
-        id: 'task-1',
-        userId,
-        title: 'Título antigo',
-        description: 'Descrição antiga',
-        type: TaskType.CUSTOM,
-        recurrence: TaskRecurrence.ONCE,
-        daysOfWeek: [1, 3],
-      };
-      const dto: UpdateTaskDto = {
-        title: 'Título novo',
-        type: TaskType.DAILY,
-        recurrence: TaskRecurrence.RECURRING,
-      };
-      tasksRepo.findOne.mockResolvedValue(task);
-      tasksRepo.save.mockImplementation((value: Task) =>
-        Promise.resolve(value),
-      );
-
-      await expect(service.update(userId, 'task-1', dto)).resolves.toEqual({
-        ...task,
-        ...dto,
-        daysOfWeek: ALL_DAYS,
-      });
-      expect(tasksRepo.save).toHaveBeenCalledTimes(1);
-      expect(occurrencesRepo.softRemove).not.toHaveBeenCalled();
-    });
-
     it('cancela a definição somente se ela pertencer ao usuário', async () => {
       const task = { id: 'task-1', userId };
       tasksRepo.findOne.mockResolvedValue(task);
@@ -344,6 +412,184 @@ describe('TasksService', () => {
       await service.remove(userId, 'task-1');
 
       expect(tasksRepo.softRemove).toHaveBeenCalledWith(task);
+    });
+
+    it('não cancela a definição de outro usuário', async () => {
+      tasksRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.remove('outro-usuario', 'task-1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(tasksRepo.softRemove).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('update', () => {
+    let txQb: ReturnType<typeof createQueryBuilderMock>;
+
+    const makeTask = (overrides: Partial<Task> = {}) =>
+      ({
+        id: 'task-1',
+        userId,
+        title: 'Treinar',
+        description: 'Descrição',
+        type: TaskType.CUSTOM,
+        recurrence: TaskRecurrence.RECURRING,
+        startDate: '2026-10-12',
+        daysOfWeek: [1, 3, 5],
+        ...overrides,
+      }) as Task;
+
+    const occurrence = (
+      id: string,
+      referenceDate: string,
+      completed = false,
+    ) => ({
+      id,
+      referenceDate,
+      completions: completed ? [{ id: `completion-${id}` }] : [],
+    });
+
+    beforeEach(() => {
+      txQb = createQueryBuilderMock();
+      txOccurrencesRepo.createQueryBuilder.mockReturnValue(txQb);
+      txTasksRepo.save.mockImplementation((value: Task) =>
+        Promise.resolve(value),
+      );
+    });
+
+    it('atualiza o título, mantém a descrição e não mexe nas ocorrências', async () => {
+      tasksRepo.findOne.mockResolvedValue(makeTask());
+
+      const result = await service.update(
+        userId,
+        'task-1',
+        { title: 'Novo título' },
+        today,
+      );
+
+      expect(result).toMatchObject({
+        title: 'Novo título',
+        description: 'Descrição',
+        type: TaskType.CUSTOM,
+        daysOfWeek: [1, 3, 5],
+      });
+      expect(txOccurrencesRepo.find).not.toHaveBeenCalled();
+      expect(txOccurrencesRepo.delete).not.toHaveBeenCalled();
+      expect(txQb.insert).not.toHaveBeenCalled();
+    });
+
+    it('limpa a descrição quando ela é enviada como null', async () => {
+      tasksRepo.findOne.mockResolvedValue(makeTask());
+      const dto = { description: null } as unknown as UpdateTaskDto;
+
+      const result = await service.update(userId, 'task-1', dto, today);
+
+      expect(result.description).toBeNull();
+    });
+
+    it('não atualiza a definição de outro usuário', async () => {
+      tasksRepo.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.update('outro-usuario', 'task-1', { title: 'x' }, today),
+      ).rejects.toThrow(NotFoundException);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejeita virar customizada sem informar os dias', async () => {
+      tasksRepo.findOne.mockResolvedValue(
+        makeTask({ type: TaskType.DAILY, daysOfWeek: ALL_DAYS }),
+      );
+
+      await expect(
+        service.update(userId, 'task-1', { type: TaskType.CUSTOM }, today),
+      ).rejects.toThrow(BadRequestException);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejeita esvaziar os dias de uma tarefa customizada', async () => {
+      tasksRepo.findOne.mockResolvedValue(makeTask());
+
+      await expect(
+        service.update(userId, 'task-1', { daysOfWeek: [] }, today),
+      ).rejects.toThrow(BadRequestException);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
+    it('grava os sete dias quando a tarefa vira diária', async () => {
+      tasksRepo.findOne.mockResolvedValue(makeTask());
+
+      const result = await service.update(
+        userId,
+        'task-1',
+        { type: TaskType.DAILY },
+        today,
+      );
+
+      expect(result.daysOfWeek).toEqual(ALL_DAYS);
+    });
+
+    it('remove de verdade as futuras inválidas sem conclusão e preserva as demais', async () => {
+      tasksRepo.findOne.mockResolvedValue(makeTask());
+      txOccurrencesRepo.find.mockResolvedValue([
+        occurrence('mon', '2026-10-12'), // passada: preservada
+        occurrence('wed', '2026-10-14'), // passada: preservada
+        occurrence('fri', '2026-10-16'), // continua válida: preservada
+        occurrence('next-mon', '2026-10-19'), // futura e inválida: removida
+        occurrence('next-wed', '2026-10-21', true), // inválida, mas concluída: preservada
+      ]);
+
+      await service.update(userId, 'task-1', { daysOfWeek: [5] }, today);
+
+      expect(txOccurrencesRepo.find).toHaveBeenCalledWith({
+        where: { taskId: 'task-1' },
+        withDeleted: true,
+        relations: { completions: true },
+      });
+      expect(txOccurrencesRepo.delete).toHaveBeenCalledWith(['next-mon']);
+      expect(txQb.values).toHaveBeenCalledWith([
+        { taskId: 'task-1', referenceDate: '2026-10-16' },
+      ]);
+      expect(txQb.orIgnore).toHaveBeenCalled();
+    });
+
+    it('ao virar semanal, troca as ocorrências futuras pela da segunda-feira', async () => {
+      tasksRepo.findOne.mockResolvedValue(makeTask());
+      txOccurrencesRepo.find.mockResolvedValue([
+        occurrence('fri', '2026-10-16'),
+      ]);
+
+      const result = await service.update(
+        userId,
+        'task-1',
+        { type: TaskType.WEEKLY },
+        today,
+      );
+
+      expect(result.daysOfWeek).toBeNull();
+      expect(txOccurrencesRepo.delete).toHaveBeenCalledWith(['fri']);
+      expect(txQb.values).toHaveBeenCalledWith([
+        { taskId: 'task-1', referenceDate: '2026-10-12' },
+      ]);
+    });
+
+    it('não cria ocorrências na semana atual para tarefa ONCE de outra semana', async () => {
+      tasksRepo.findOne.mockResolvedValue(
+        makeTask({
+          recurrence: TaskRecurrence.ONCE,
+          startDate: '2026-10-05',
+        }),
+      );
+
+      await service.update(
+        userId,
+        'task-1',
+        { type: TaskType.DAILY },
+        today,
+      );
+
+      expect(txQb.insert).not.toHaveBeenCalled();
     });
   });
 
@@ -361,6 +607,19 @@ describe('TasksService', () => {
       occurrencesRepo.createQueryBuilder.mockReturnValue(qb);
       return qb;
     }
+
+    function occurrenceNotFound() {
+      const qb = createQueryBuilderMock();
+      qb.getOne.mockResolvedValue(null);
+      occurrencesRepo.createQueryBuilder.mockReturnValue(qb);
+    }
+
+    const uniqueViolation = () =>
+      new QueryFailedError(
+        'INSERT',
+        [],
+        Object.assign(new Error('duplicate key'), { code: '23505' }),
+      );
 
     it('cria uma conclusão vinculada ao occurrenceId', async () => {
       occurrenceQueryBuilder();
@@ -389,6 +648,35 @@ describe('TasksService', () => {
       expect(completionsRepo.save).not.toHaveBeenCalled();
     });
 
+    it('converte a violação de unicidade do banco em Conflict (corrida)', async () => {
+      occurrenceQueryBuilder();
+      completionsRepo.findOne.mockResolvedValue(null);
+      completionsRepo.save.mockRejectedValue(uniqueViolation());
+
+      await expect(
+        service.completeOccurrence(userId, occurrence.id),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('repassa erros inesperados ao concluir', async () => {
+      occurrenceQueryBuilder();
+      completionsRepo.findOne.mockResolvedValue(null);
+      completionsRepo.save.mockRejectedValue(new Error('falha de conexão'));
+
+      await expect(
+        service.completeOccurrence(userId, occurrence.id),
+      ).rejects.toThrow('falha de conexão');
+    });
+
+    it('rejeita ocorrência de outro usuário ao concluir', async () => {
+      occurrenceNotFound();
+
+      await expect(
+        service.completeOccurrence('outro-usuario', occurrence.id),
+      ).rejects.toThrow(NotFoundException);
+      expect(completionsRepo.save).not.toHaveBeenCalled();
+    });
+
     it('desfaz a conclusão somente após validar o proprietário', async () => {
       occurrenceQueryBuilder();
 
@@ -399,19 +687,17 @@ describe('TasksService', () => {
       });
     });
 
-    it('rejeita ocorrência de outro usuário', async () => {
-      const qb = createQueryBuilderMock();
-      qb.getOne.mockResolvedValue(null);
-      occurrencesRepo.createQueryBuilder.mockReturnValue(qb);
+    it('rejeita ocorrência de outro usuário ao desfazer', async () => {
+      occurrenceNotFound();
 
       await expect(
-        service.completeOccurrence('outro-usuario', occurrence.id),
+        service.uncompleteOccurrence('outro-usuario', occurrence.id),
       ).rejects.toThrow(NotFoundException);
-      expect(completionsRepo.save).not.toHaveBeenCalled();
+      expect(completionsRepo.delete).not.toHaveBeenCalled();
     });
   });
 
-  describe('remoção e geração de ocorrências', () => {
+  describe('remoção de ocorrências', () => {
     it('remove somente a ocorrência solicitada', async () => {
       const qb = createQueryBuilderMock();
       const occurrence = { id: 'occ-1', task: { userId } };
@@ -423,40 +709,15 @@ describe('TasksService', () => {
       expect(occurrencesRepo.softRemove).toHaveBeenCalledWith(occurrence);
     });
 
-    it('não gera datas anteriores à criação na semana atual', async () => {
+    it('rejeita ocorrência de outro usuário', async () => {
       const qb = createQueryBuilderMock();
+      qb.getOne.mockResolvedValue(null);
       occurrencesRepo.createQueryBuilder.mockReturnValue(qb);
-      tasksRepo.find.mockResolvedValue([
-        {
-          id: 'task-1',
-          type: TaskType.DAILY,
-          daysOfWeek: ALL_DAYS,
-          startDate: '2026-10-15',
-          createdAt: new Date('2026-10-15T12:00:00Z'),
-        },
-      ]);
 
-      await service.findToday(userId, today);
-
-      expect(qb.values).toHaveBeenCalledWith([
-        { taskId: 'task-1', referenceDate: '2026-10-16' },
-        { taskId: 'task-1', referenceDate: '2026-10-17' },
-        { taskId: 'task-1', referenceDate: '2026-10-18' },
-      ]);
-    });
-
-    it('rejeita dias inválidos ao criar uma tarefa customizada', async () => {
-      const dto: CreateTaskDto = {
-        title: 'Treinar',
-        type: TaskType.CUSTOM,
-        recurrence: TaskRecurrence.ONCE,
-        daysOfWeek: [7],
-      };
-
-      await expect(service.create(userId, dto, today)).rejects.toThrow(
-        BadRequestException,
-      );
-      expect(dataSource.transaction).not.toHaveBeenCalled();
+      await expect(
+        service.removeOccurrence('outro-usuario', 'occ-1'),
+      ).rejects.toThrow(NotFoundException);
+      expect(occurrencesRepo.softRemove).not.toHaveBeenCalled();
     });
   });
 });

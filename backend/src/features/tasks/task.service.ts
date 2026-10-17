@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, EntityManager, QueryFailedError, Repository } from 'typeorm';
 import {
   getDayOfWeek,
   getServerToday,
@@ -42,7 +42,7 @@ export class TasksService {
     dto: CreateTaskDto,
     today: string = getServerToday(),
   ): Promise<Task> {
-    const daysOfWeek = this.resolveDaysOfWeek(dto);
+    const daysOfWeek = this.resolveDaysOfWeek(dto.type, dto.daysOfWeek);
 
     return this.dataSource.transaction(async (manager) => {
       const tasksRepo = manager.getRepository(Task);
@@ -137,40 +137,104 @@ export class TasksService {
     userId: string,
     taskId: string,
     dto: UpdateTaskDto,
+    today: string = getServerToday(),
   ): Promise<Task> {
     const task = await this.findOne(userId, taskId);
+
     const type = dto.type ?? task.type;
-    const description = Object.prototype.hasOwnProperty.call(
-      dto,
-      'description',
-    )
+    const recurrence = dto.recurrence ?? task.recurrence;
+    const description = Object.prototype.hasOwnProperty.call(dto, 'description')
       ? dto.description
       : task.description;
-    const daysOfWeek = this.resolveDaysOfWeek({
-      title: dto.title ?? task.title,
-      description,
-      type,
-      recurrence: dto.recurrence ?? task.recurrence,
-      daysOfWeek: dto.daysOfWeek ?? task.daysOfWeek ?? undefined,
-    });
-    const scheduleChanged =
-      dto.type !== undefined || dto.daysOfWeek !== undefined;
-    const recurrenceChanged = dto.recurrence !== undefined;
 
-    Object.assign(task, {
-      title: dto.title ?? task.title,
-      description,
-      type,
-      recurrence: dto.recurrence ?? task.recurrence,
-      daysOfWeek,
-    });
-    const updatedTask = await this.tasksRepo.save(task);
-
-    if (scheduleChanged || recurrenceChanged) {
-      await this.reconcileFutureOccurrences(updatedTask);
+    if (
+      type === TaskType.CUSTOM &&
+      task.type !== TaskType.CUSTOM &&
+      dto.daysOfWeek === undefined
+    ) {
+      throw new BadRequestException(
+        'Ao mudar para customizada, informe os dias da semana',
+      );
     }
 
-    return updatedTask;
+    const daysOfWeek = this.resolveDaysOfWeek(
+      type,
+      dto.daysOfWeek ?? task.daysOfWeek,
+    );
+    const scheduleChanged =
+      dto.type !== undefined ||
+      dto.daysOfWeek !== undefined ||
+      dto.recurrence !== undefined;
+
+    return this.dataSource.transaction(async (manager) => {
+      Object.assign(task, {
+        title: dto.title ?? task.title,
+        description,
+        type,
+        recurrence,
+        daysOfWeek,
+      });
+      const updatedTask = await manager.getRepository(Task).save(task);
+
+      if (scheduleChanged) {
+        await this.reconcileCurrentWeek(manager, updatedTask, today);
+      }
+
+      return updatedTask;
+    });
+  }
+
+  private async reconcileCurrentWeek(manager: EntityManager, task: Task, today: string,): Promise<void> {
+    const occurrencesRepo = manager.getRepository(TaskOccurrence);
+    const weekStart = getWeekStart(today);
+
+    const activeThisWeek =
+      task.recurrence === TaskRecurrence.RECURRING ||
+      getWeekStart(task.startDate) === weekStart;
+
+    const validDates = new Set(
+      activeThisWeek
+        ? getWeekOccurrenceDates(
+            task.type,
+            task.daysOfWeek ?? null,
+            weekStart,
+          ).filter((date) => task.type === TaskType.WEEKLY || date >= today)
+        : [],
+    );
+
+    const existing = await occurrencesRepo.find({
+      where: { taskId: task.id },
+      withDeleted: true,
+      relations: { completions: true },
+    });
+
+    const staleIds = existing
+      .filter(
+        (occurrence) =>
+          occurrence.referenceDate >= today &&
+          !validDates.has(occurrence.referenceDate) &&
+          !(occurrence.completions?.length ?? 0),
+      )
+      .map((occurrence) => occurrence.id);
+
+    if (staleIds.length > 0) {
+      await occurrencesRepo.delete(staleIds); 
+    }
+
+    if (validDates.size > 0) {
+      await occurrencesRepo
+        .createQueryBuilder()
+        .insert()
+        .into(TaskOccurrence)
+        .values(
+          [...validDates].map((referenceDate) => ({
+            taskId: task.id,
+            referenceDate,
+          })),
+        )
+        .orIgnore() 
+        .execute();
+    }
   }
 
   async remove(userId: string, taskId: string): Promise<void> {
@@ -228,13 +292,16 @@ export class TasksService {
     return occurrence;
   }
 
-  private async ensureOccurrencesForWeek(userId: string, weekStart: string, today: string,): Promise<void> {
+  private async ensureOccurrencesForWeek(userId: string, weekStart: string, date: string): Promise<void> {
     const tasks = await this.tasksRepo.find({
       where: { userId, recurrence: TaskRecurrence.RECURRING },
     });
 
     const rows = tasks.flatMap((task) => {
-      const startDate = task.startDate;
+      if (weekStart < getWeekStart(task.startDate)) {
+        return [];
+      }
+
       return getWeekOccurrenceDates(
         task.type,
         task.daysOfWeek ?? null,
@@ -242,12 +309,8 @@ export class TasksService {
       )
         .filter(
           (referenceDate) =>
-            referenceDate >= weekStart &&
-            (weekStart !== getWeekStart(today) ||
-              task.type === TaskType.WEEKLY ||
-              !startDate ||
-              referenceDate >= today) &&
-            (!startDate || task.type === TaskType.WEEKLY || referenceDate >= startDate),
+            task.type === TaskType.WEEKLY ||
+            (referenceDate >= task.startDate && referenceDate >= date),
         )
         .map((referenceDate) => ({ taskId: task.id, referenceDate }));
     });
@@ -265,33 +328,8 @@ export class TasksService {
       .execute();
   }
 
-  private async reconcileFutureOccurrences(task: Task): Promise<void> {
-    const today = getServerToday();
-    const occurrences = await this.occurrencesRepo.find({
-      where: { taskId: task.id },
-      relations: { completions: true },
-    });
-    const futureIncomplete = occurrences.filter(
-      (occurrence) =>
-        occurrence.referenceDate >= today &&
-        !(occurrence.completions?.length ?? 0),
-    );
-
-    if (futureIncomplete.length > 0) {
-      await this.occurrencesRepo.softRemove(futureIncomplete);
-    }
-
-    if (task.recurrence === TaskRecurrence.RECURRING) {
-      await this.ensureOccurrencesForWeek(
-        task.userId,
-        getWeekStart(today),
-        today,
-      );
-    }
-  }
-
-  private resolveDaysOfWeek(dto: CreateTaskDto): number[] | null {
-    switch (dto.type) {
+  private resolveDaysOfWeek(type: TaskType, daysOfWeek?: number[] | null,): number[] | null {
+    switch (type) {
       case TaskType.DAILY:
         return [...ALL_DAYS];
 
@@ -299,21 +337,17 @@ export class TasksService {
         return null;
 
       case TaskType.CUSTOM:
-        if (!dto.daysOfWeek?.length) {
+        if (!daysOfWeek?.length) {
           throw new BadRequestException(
             'Tarefas customizadas exigem ao menos um dia da semana',
           );
         }
 
-        if (
-          dto.daysOfWeek.some(
-            (day) => !Number.isInteger(day) || day < 0 || day > 6,
-          )
-        ) {
+        if (daysOfWeek.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) {
           throw new BadRequestException('Dia da semana inválido');
         }
 
-        return [...new Set(dto.daysOfWeek)].sort((a, b) => a - b);
+        return [...new Set(daysOfWeek)].sort((a, b) => a - b);
     }
   }
 }
