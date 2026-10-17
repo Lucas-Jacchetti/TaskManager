@@ -24,13 +24,16 @@ export class Task {
     title: string;
 
     @Column({ type: 'text', nullable: true })
-    description?: string;
+    description?: string | null;
 
     @Column({ type: 'enum', enum: TaskType })
     type: TaskType;
 
     @Column({type: 'enum', enum: TaskRecurrence, default: TaskRecurrence.ONCE})
     recurrence: TaskRecurrence;
+
+    @Column({ type: 'date' })
+    startDate: string;
 
     @Column('int', { array: true, nullable: true })
     daysOfWeek?: number[] | null;

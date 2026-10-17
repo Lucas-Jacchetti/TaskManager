@@ -9,8 +9,14 @@ describe('TasksController', () => {
   let controller: TasksController;
   const tasksService = {
     create: jest.fn(),
+    findAll: jest.fn(),
     findToday: jest.fn(),
     findWeekly: jest.fn(),
+    update: jest.fn(),
+    remove: jest.fn(),
+    completeOccurrence: jest.fn(),
+    uncompleteOccurrence: jest.fn(),
+    removeOccurrence: jest.fn(),
   };
 
   const createdAt = new Date('2026-10-16T12:00:00Z');
@@ -57,7 +63,13 @@ describe('TasksController', () => {
 
   it('lista as ocorrências de hoje no formato de resposta', async () => {
     tasksService.findToday.mockResolvedValue([
-      { id: 'occ-1', referenceDate: '2026-10-16', createdAt, task },
+      {
+        id: 'occ-1',
+        referenceDate: '2026-10-16',
+        createdAt,
+        task,
+        completions: [],
+      },
     ]);
 
     const result = await controller.findToday('user-1', {
@@ -79,6 +91,7 @@ describe('TasksController', () => {
         daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
         referenceDate: '2026-10-16',
         createdAt,
+        completed: false,
       },
     ]);
   });
@@ -90,5 +103,45 @@ describe('TasksController', () => {
 
     expect(tasksService.findWeekly).toHaveBeenCalledWith('user-1', undefined);
     expect(result).toEqual([]);
+  });
+
+  it('lista as definições do usuário', async () => {
+    tasksService.findAll.mockResolvedValue([task]);
+
+    const result = await controller.findAll('user-1');
+
+    expect(tasksService.findAll).toHaveBeenCalledWith('user-1');
+    expect(result).toEqual([{ ...task, description: null }]);
+  });
+
+  it('atualiza uma definição e encaminha o usuário e o id', async () => {
+    const dto = { title: 'Novo título' };
+    tasksService.update.mockResolvedValue({ ...task, ...dto });
+
+    const result = await controller.update('user-1', 'task-1', dto);
+
+    expect(tasksService.update).toHaveBeenCalledWith('user-1', 'task-1', dto);
+    expect(result).toEqual({ ...task, ...dto, description: null });
+  });
+
+  it('encaminha as ações de ocorrência para o serviço', async () => {
+    await controller.complete('user-1', 'occ-1');
+    await controller.uncomplete('user-1', 'occ-1');
+    await controller.removeOccurrence('user-1', 'occ-1');
+    await controller.remove('user-1', 'task-1');
+
+    expect(tasksService.completeOccurrence).toHaveBeenCalledWith(
+      'user-1',
+      'occ-1',
+    );
+    expect(tasksService.uncompleteOccurrence).toHaveBeenCalledWith(
+      'user-1',
+      'occ-1',
+    );
+    expect(tasksService.removeOccurrence).toHaveBeenCalledWith(
+      'user-1',
+      'occ-1',
+    );
+    expect(tasksService.remove).toHaveBeenCalledWith('user-1', 'task-1');
   });
 });

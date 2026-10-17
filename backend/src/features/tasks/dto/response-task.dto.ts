@@ -46,6 +46,11 @@ export class TaskResponseDto {
     @ApiProperty()
     createdAt: Date;
 
+    @ApiProperty({
+        description: 'Indica se esta ocorrência foi concluída',
+    })
+    completed: boolean;
+
     static fromEntity(
         occurrence: TaskOccurrence,
     ): TaskResponseDto {
@@ -61,6 +66,7 @@ export class TaskResponseDto {
         dto.daysOfWeek = task.daysOfWeek ?? null;
         dto.referenceDate = occurrence.referenceDate;
         dto.createdAt = occurrence.createdAt;
+        dto.completed = (occurrence.completions?.length ?? 0) > 0;
 
         return dto;
     }

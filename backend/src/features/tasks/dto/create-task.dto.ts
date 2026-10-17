@@ -32,7 +32,7 @@ export class CreateTaskDto {
     @IsOptional()
     @IsString()
     @MaxLength(500)
-    description?: string;
+    description?: string | null;
 
     @ApiProperty({ enum: TaskType, example: TaskType.CUSTOM })
     @IsEnum(TaskType)
