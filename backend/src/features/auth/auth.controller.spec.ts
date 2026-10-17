@@ -4,7 +4,8 @@ import { AuthService } from './auth.service';
 
 describe('AuthController', () => {
   let controller: AuthController;
-  const authService = { register: jest.fn(), login: jest.fn() };
+  const authService = { register: jest.fn(), login: jest.fn(), me: jest.fn(), };
+  
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -33,5 +34,12 @@ describe('AuthController', () => {
       access_token: 'token-jwt',
     });
     expect(authService.login).toHaveBeenCalledWith(dto);
+  });
+
+  it('devolve o usuário autenticado', async () => {
+    authService.me.mockResolvedValue({ id: 'user-1' });
+
+    await expect(controller.me('user-1')).resolves.toEqual({ id: 'user-1' });
+    expect(authService.me).toHaveBeenCalledWith('user-1');
   });
 });

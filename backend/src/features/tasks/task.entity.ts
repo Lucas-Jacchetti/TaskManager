@@ -32,7 +32,7 @@ export class Task {
     @Column({type: 'enum', enum: TaskRecurrence, default: TaskRecurrence.ONCE})
     recurrence: TaskRecurrence;
 
-    @Column({ type: 'date' })
+    @Column({ type: 'date', default: () => 'CURRENT_DATE' })
     startDate: string;
 
     @Column('int', { array: true, nullable: true })

@@ -30,4 +30,8 @@ export class UsersService {
     const user = this.usersRepository.create(data);
     return this.usersRepository.save(user);
   }
+  
+  findById(id: string): Promise<User | null> {
+    return this.usersRepository.findOne({ where: { id } });
+  }
 }

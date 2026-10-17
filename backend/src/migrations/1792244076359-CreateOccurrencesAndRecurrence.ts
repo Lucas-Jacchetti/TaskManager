@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class CreateOccurrencesAndRecurrence1792177603430 implements MigrationInterface {
-    name = 'CreateOccurrencesAndRecurrence1792177603430'
+export class CreateOccurrencesAndRecurrence1792244076359 implements MigrationInterface {
+    name = 'CreateOccurrencesAndRecurrence1792244076359'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`ALTER TABLE "task_completions" DROP CONSTRAINT "FK_a979ec83a30f605167ad4a42a51"`);
@@ -12,6 +12,7 @@ export class CreateOccurrencesAndRecurrence1792177603430 implements MigrationInt
         await queryRunner.query(`ALTER TABLE "task_completions" DROP COLUMN "referenceDate"`);
         await queryRunner.query(`CREATE TYPE "public"."tasks_recurrence_enum" AS ENUM('ONCE', 'RECURRING')`);
         await queryRunner.query(`ALTER TABLE "tasks" ADD "recurrence" "public"."tasks_recurrence_enum" NOT NULL DEFAULT 'ONCE'`);
+        await queryRunner.query(`ALTER TABLE "tasks" ADD "startDate" date NOT NULL DEFAULT ('now'::text)::date`);
         await queryRunner.query(`ALTER TABLE "task_completions" ADD "occurrenceId" uuid NOT NULL`);
         await queryRunner.query(`ALTER TABLE "task_completions" ADD CONSTRAINT "UQ_d92b4fe53b39315adf2163d8e1c" UNIQUE ("occurrenceId")`);
         await queryRunner.query(`ALTER TABLE "task_occurrences" ADD CONSTRAINT "FK_3ad6e2faf11a085551e217dbbce" FOREIGN KEY ("taskId") REFERENCES "tasks"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
@@ -23,6 +24,7 @@ export class CreateOccurrencesAndRecurrence1792177603430 implements MigrationInt
         await queryRunner.query(`ALTER TABLE "task_occurrences" DROP CONSTRAINT "FK_3ad6e2faf11a085551e217dbbce"`);
         await queryRunner.query(`ALTER TABLE "task_completions" DROP CONSTRAINT "UQ_d92b4fe53b39315adf2163d8e1c"`);
         await queryRunner.query(`ALTER TABLE "task_completions" DROP COLUMN "occurrenceId"`);
+        await queryRunner.query(`ALTER TABLE "tasks" DROP COLUMN "startDate"`);
         await queryRunner.query(`ALTER TABLE "tasks" DROP COLUMN "recurrence"`);
         await queryRunner.query(`DROP TYPE "public"."tasks_recurrence_enum"`);
         await queryRunner.query(`ALTER TABLE "task_completions" ADD "referenceDate" date NOT NULL`);

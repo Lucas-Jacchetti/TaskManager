@@ -9,6 +9,7 @@ import { QueryFailedError } from 'typeorm';
 import { UsersService } from '../users/user.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { UserResponseDto } from '../users/dto/user-response.dto';
 
 const BCRYPT_ROUNDS = 12;
 const PG_UNIQUE_VIOLATION = '23505';
@@ -71,5 +72,13 @@ export class AuthService {
   private getDummyHash(): Promise<string> {
     this.dummyHash ??= bcrypt.hash('senha-fictícia-para-igualar-tempo', BCRYPT_ROUNDS);
     return this.dummyHash;
+  }
+
+  async me(userId: string): Promise<UserResponseDto> {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException('Usuário não encontrado');
+    }
+    return UserResponseDto.fromEntity(user);
   }
 }

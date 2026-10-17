@@ -6,14 +6,14 @@ import {
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource, QueryFailedError } from 'typeorm';
-import { TasksService } from '../task.service';
-import { TaskOccurrence } from '../task-ocurrence.entity';
-import { TaskCompletion } from '../task-completion.entity';
-import { Task } from '../task.entity';
 import { CreateTaskDto } from '../dto/create-task.dto';
-import { TaskRecurrence } from '../task-recurrence.enum';
-import { TaskType } from '../task-type.enum';
 import { UpdateTaskDto } from '../dto/update-task.dto';
+import { TaskCompletion } from '../task-completion.entity';
+import { TaskOccurrence } from '../task-ocurrence.entity';
+import { TaskRecurrence } from '../task-recurrence.enum';
+import { Task } from '../task.entity';
+import { TaskType } from '../task-type.enum';
+import { TasksService } from '../task.service';
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 
@@ -23,6 +23,8 @@ function createQueryBuilderMock(result: unknown[] = []) {
     leftJoinAndSelect: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(),
     getMany: jest.fn().mockResolvedValue(result),
     getOne: jest.fn(),
     insert: jest.fn().mockReturnThis(),
@@ -63,6 +65,29 @@ describe('TasksService', () => {
     delete: jest.Mock;
   };
   let dataSource: { transaction: jest.Mock };
+
+  const makeTask = (overrides: Partial<Task> = {}) =>
+    ({
+      id: 'task-1',
+      userId,
+      title: 'Treinar',
+      description: 'Descrição',
+      type: TaskType.CUSTOM,
+      recurrence: TaskRecurrence.RECURRING,
+      startDate: '2026-10-12',
+      daysOfWeek: [1, 3, 5],
+      ...overrides,
+    }) as Task;
+
+  const makeOccurrence = (
+    id: string,
+    referenceDate: string,
+    completed = false,
+  ) => ({
+    id,
+    referenceDate,
+    completions: completed ? [{ id: `completion-${id}` }] : [],
+  });
 
   beforeEach(async () => {
     tasksRepo = {
@@ -132,7 +157,7 @@ describe('TasksService', () => {
         title: 'Beber água',
         type: TaskType.DAILY,
         recurrence: TaskRecurrence.ONCE,
-        daysOfWeek: [1],
+        daysOfWeek: [1], // ignorado nas diárias
       };
 
       await service.create(userId, dto, today);
@@ -182,6 +207,21 @@ describe('TasksService', () => {
       ]);
     });
 
+    it('adia para a semana seguinte uma customizada sem dias restantes na semana', async () => {
+      const dto: CreateTaskDto = {
+        title: 'Revisar',
+        type: TaskType.CUSTOM,
+        recurrence: TaskRecurrence.ONCE,
+        daysOfWeek: [1], // segunda; hoje é sexta
+      };
+
+      await service.create(userId, dto, today);
+
+      expect(txOccurrencesRepo.save).toHaveBeenCalledWith([
+        { taskId: 'task-1', referenceDate: '2026-10-19' },
+      ]);
+    });
+
     it.each([[undefined], [[]]])(
       'rejeita tarefa customizada sem dias (%p)',
       async (daysOfWeek) => {
@@ -219,7 +259,7 @@ describe('TasksService', () => {
         description: '20 páginas',
         type: TaskType.DAILY,
         recurrence: TaskRecurrence.RECURRING,
-        userId: 'outro-usuario',
+        userId: 'outro-usuario', // tentativa de injeção, não faz parte do DTO
       } as CreateTaskDto;
 
       await service.create(userId, dto, today);
@@ -257,6 +297,7 @@ describe('TasksService', () => {
       expect(qb.where).toHaveBeenCalledWith('task.userId = :userId', {
         userId,
       });
+      expect(qb.andWhere).toHaveBeenCalledWith('task.deletedAt IS NULL');
       expect(qb.andWhere).toHaveBeenCalledWith(
         'occurrence.referenceDate = :today',
         { today },
@@ -265,6 +306,16 @@ describe('TasksService', () => {
         expect.stringContaining('ANY(task.daysOfWeek)'),
         { daily: TaskType.DAILY, custom: TaskType.CUSTOM, day: 5 },
       );
+    });
+
+    it('mantém uma ordem estável', async () => {
+      const qb = createQueryBuilderMock();
+      occurrencesRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findToday(userId, today);
+
+      expect(qb.orderBy).toHaveBeenCalledWith('task.createdAt', 'ASC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('occurrence.id', 'ASC');
     });
   });
 
@@ -285,6 +336,16 @@ describe('TasksService', () => {
         'occurrence.referenceDate = :weekStart',
         { weekStart: '2026-10-12' },
       );
+    });
+
+    it('mantém uma ordem estável', async () => {
+      const qb = createQueryBuilderMock();
+      occurrencesRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findWeekly(userId, today);
+
+      expect(qb.orderBy).toHaveBeenCalledWith('task.createdAt', 'ASC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('occurrence.id', 'ASC');
     });
   });
 
@@ -309,14 +370,19 @@ describe('TasksService', () => {
       occurrencesRepo.createQueryBuilder.mockReturnValue(qb);
     });
 
+    it('busca só as tarefas recorrentes do usuário', async () => {
+      await service.findToday(userId, today);
+
+      expect(tasksRepo.find).toHaveBeenCalledWith({
+        where: { userId, recurrence: TaskRecurrence.RECURRING },
+      });
+    });
+
     it('gera a semana inteira quando a consulta é na segunda e a tarefa é anterior à semana', async () => {
       tasksRepo.find.mockResolvedValue([dailyTask('2026-10-01')]);
 
       await service.findToday(userId, '2026-10-12');
 
-      expect(tasksRepo.find).toHaveBeenCalledWith({
-        where: { userId, recurrence: TaskRecurrence.RECURRING },
-      });
       const rows = qb.values.mock.calls[0][0] as unknown[];
       expect(rows).toHaveLength(7);
       expect(rows).toContainEqual({
@@ -378,13 +444,79 @@ describe('TasksService', () => {
     });
   });
 
+  describe('data de referência', () => {
+    // Com o relógio fixo em 2026-10-16, o limite de 56 dias cai em 2026-12-11
+    beforeEach(() => {
+      jest.useFakeTimers({
+        now: new Date(2026, 9, 16, 12, 0),
+        doNotFake: ['nextTick', 'setImmediate'],
+      });
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('usa a data do servidor quando a data não é informada', async () => {
+      const qb = createQueryBuilderMock();
+      occurrencesRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.findToday(userId);
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'occurrence.referenceDate = :today',
+        { today: '2026-10-16' },
+      );
+    });
+
+    it('aceita a data exatamente no limite de 56 dias à frente', async () => {
+      const qb = createQueryBuilderMock();
+      occurrencesRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await expect(service.findToday(userId, '2026-12-11')).resolves.toEqual(
+        [],
+      );
+    });
+
+    it.each(['2026-12-12', '2999-01-01'])(
+      'rejeita a data %s, além do limite, sem tocar no banco',
+      async (date) => {
+        const dto: CreateTaskDto = {
+          title: 'Beber água',
+          type: TaskType.DAILY,
+          recurrence: TaskRecurrence.ONCE,
+        };
+        tasksRepo.findOne.mockResolvedValue(makeTask());
+
+        await expect(service.findToday(userId, date)).rejects.toThrow(
+          BadRequestException,
+        );
+        await expect(service.findWeekly(userId, date)).rejects.toThrow(
+          BadRequestException,
+        );
+        await expect(service.create(userId, dto, date)).rejects.toThrow(
+          BadRequestException,
+        );
+        await expect(
+          service.update(userId, 'task-1', { title: 'Novo' }, date),
+        ).rejects.toThrow(BadRequestException);
+
+        expect(tasksRepo.find).not.toHaveBeenCalled();
+        expect(dataSource.transaction).not.toHaveBeenCalled();
+      },
+    );
+  });
+
   describe('CRUD das definições', () => {
-    it('lista as definições do usuário', async () => {
+    it('lista as definições do usuário, das mais recentes para as mais antigas', async () => {
       const tasks = [{ id: 'task-1', userId }];
       tasksRepo.find.mockResolvedValue(tasks);
 
       await expect(service.findAll(userId)).resolves.toBe(tasks);
-      expect(tasksRepo.find).toHaveBeenCalledWith({ where: { userId } });
+      expect(tasksRepo.find).toHaveBeenCalledWith({
+        where: { userId },
+        order: { createdAt: 'DESC' },
+      });
     });
 
     it('devolve a definição do próprio usuário', async () => {
@@ -426,29 +558,6 @@ describe('TasksService', () => {
 
   describe('update', () => {
     let txQb: ReturnType<typeof createQueryBuilderMock>;
-
-    const makeTask = (overrides: Partial<Task> = {}) =>
-      ({
-        id: 'task-1',
-        userId,
-        title: 'Treinar',
-        description: 'Descrição',
-        type: TaskType.CUSTOM,
-        recurrence: TaskRecurrence.RECURRING,
-        startDate: '2026-10-12',
-        daysOfWeek: [1, 3, 5],
-        ...overrides,
-      }) as Task;
-
-    const occurrence = (
-      id: string,
-      referenceDate: string,
-      completed = false,
-    ) => ({
-      id,
-      referenceDate,
-      completions: completed ? [{ id: `completion-${id}` }] : [],
-    });
 
     beforeEach(() => {
       txQb = createQueryBuilderMock();
@@ -533,11 +642,11 @@ describe('TasksService', () => {
     it('remove de verdade as futuras inválidas sem conclusão e preserva as demais', async () => {
       tasksRepo.findOne.mockResolvedValue(makeTask());
       txOccurrencesRepo.find.mockResolvedValue([
-        occurrence('mon', '2026-10-12'), // passada: preservada
-        occurrence('wed', '2026-10-14'), // passada: preservada
-        occurrence('fri', '2026-10-16'), // continua válida: preservada
-        occurrence('next-mon', '2026-10-19'), // futura e inválida: removida
-        occurrence('next-wed', '2026-10-21', true), // inválida, mas concluída: preservada
+        makeOccurrence('mon', '2026-10-12'), // passada: preservada
+        makeOccurrence('wed', '2026-10-14'), // passada: preservada
+        makeOccurrence('fri', '2026-10-16'), // continua válida: preservada
+        makeOccurrence('next-mon', '2026-10-19'), // futura e inválida: removida
+        makeOccurrence('next-wed', '2026-10-21', true), // inválida, mas concluída: preservada
       ]);
 
       await service.update(userId, 'task-1', { daysOfWeek: [5] }, today);
@@ -557,7 +666,7 @@ describe('TasksService', () => {
     it('ao virar semanal, troca as ocorrências futuras pela da segunda-feira', async () => {
       tasksRepo.findOne.mockResolvedValue(makeTask());
       txOccurrencesRepo.find.mockResolvedValue([
-        occurrence('fri', '2026-10-16'),
+        makeOccurrence('fri', '2026-10-16'),
       ]);
 
       const result = await service.update(
@@ -574,7 +683,47 @@ describe('TasksService', () => {
       ]);
     });
 
-    it('não cria ocorrências na semana atual para tarefa ONCE de outra semana', async () => {
+    it('ao deixar de ser recorrente, remove as ocorrências das semanas seguintes', async () => {
+      tasksRepo.findOne.mockResolvedValue(makeTask());
+      txOccurrencesRepo.find.mockResolvedValue([
+        makeOccurrence('fri', '2026-10-16'),
+        makeOccurrence('next-fri', '2026-10-23'),
+      ]);
+
+      await service.update(
+        userId,
+        'task-1',
+        { recurrence: TaskRecurrence.ONCE },
+        today,
+      );
+
+      expect(txOccurrencesRepo.delete).toHaveBeenCalledWith(['next-fri']);
+      expect(txQb.values).toHaveBeenCalledWith([
+        { taskId: 'task-1', referenceDate: '2026-10-16' },
+      ]);
+    });
+
+    it('reagenda na semana seguinte uma tarefa ONCE que foi adiada', async () => {
+      tasksRepo.findOne.mockResolvedValue(
+        makeTask({
+          recurrence: TaskRecurrence.ONCE,
+          startDate: '2026-10-16',
+          daysOfWeek: [1],
+        }),
+      );
+      txOccurrencesRepo.find.mockResolvedValue([
+        makeOccurrence('mon', '2026-10-19'),
+      ]);
+
+      await service.update(userId, 'task-1', { daysOfWeek: [2] }, '2026-10-17');
+
+      expect(txOccurrencesRepo.delete).toHaveBeenCalledWith(['mon']);
+      expect(txQb.values).toHaveBeenCalledWith([
+        { taskId: 'task-1', referenceDate: '2026-10-20' },
+      ]);
+    });
+
+    it('não cria ocorrências para uma tarefa ONCE cuja janela já passou', async () => {
       tasksRepo.findOne.mockResolvedValue(
         makeTask({
           recurrence: TaskRecurrence.ONCE,
@@ -582,13 +731,9 @@ describe('TasksService', () => {
         }),
       );
 
-      await service.update(
-        userId,
-        'task-1',
-        { type: TaskType.DAILY },
-        today,
-      );
+      await service.update(userId, 'task-1', { type: TaskType.DAILY }, today);
 
+      expect(txOccurrencesRepo.delete).not.toHaveBeenCalled();
       expect(txQb.insert).not.toHaveBeenCalled();
     });
   });

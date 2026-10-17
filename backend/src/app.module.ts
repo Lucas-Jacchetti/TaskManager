@@ -1,4 +1,3 @@
-// src/app.module.ts
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -6,9 +5,14 @@ import { buildTypeOrmOptions } from './config/typeorm.config';
 import { TasksModule } from './features/tasks/task.module';
 import { AuthModule } from './features/auth/auth.module';
 import { UsersModule } from './features/users/user.module';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { validateEnv } from './config/env.validation';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     ConfigModule.forRoot({
       isGlobal: true,
       validate: (config: Record<string, unknown>) => {
@@ -29,5 +33,6 @@ import { UsersModule } from './features/users/user.module';
     UsersModule,
     AuthModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}
