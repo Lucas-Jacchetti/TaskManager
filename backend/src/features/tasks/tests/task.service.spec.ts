@@ -151,6 +151,64 @@ describe('TasksService', () => {
     service = module.get(TasksService);
   });
 
+  describe('findWeek', () => {
+    let qb: ReturnType<typeof createQueryBuilderMock>;
+
+    beforeEach(() => {
+      qb = createQueryBuilderMock();
+      occurrencesRepo.createQueryBuilder.mockReturnValue(qb);
+    });
+
+    it('gera a semana inteira das recorrentes, a partir da segunda', async () => {
+      tasksRepo.find.mockResolvedValue([
+        {
+          id: 'task-1',
+          type: TaskType.DAILY,
+          daysOfWeek: ALL_DAYS,
+          startDate: '2026-10-01',
+        },
+      ]);
+
+      await service.findWeek(userId, '2026-10-14'); // quarta-feira
+
+      const rows = qb.values.mock.calls[0][0] as unknown[];
+      expect(rows).toHaveLength(7);
+      expect(rows).toContainEqual({
+        taskId: 'task-1',
+        referenceDate: '2026-10-12',
+      });
+    });
+
+    it('filtra por usuário, tarefa ativa e intervalo da semana', async () => {
+      const occurrences = [{ id: 'occ-1' }];
+      qb.getMany.mockResolvedValue(occurrences);
+
+      const result = await service.findWeek(userId, '2026-10-14');
+
+      expect(result).toBe(occurrences);
+      expect(qb.where).toHaveBeenCalledWith('task.userId = :userId', { userId });
+      expect(qb.andWhere).toHaveBeenCalledWith('task.deletedAt IS NULL');
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'occurrence.referenceDate BETWEEN :weekStart AND :weekEnd',
+        { weekStart: '2026-10-12', weekEnd: '2026-10-18' },
+      );
+    });
+
+    it('ordena por data, depois por criação da tarefa', async () => {
+      await service.findWeek(userId, '2026-10-14');
+
+      expect(qb.orderBy).toHaveBeenCalledWith('occurrence.referenceDate', 'ASC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('task.createdAt', 'ASC');
+    });
+
+    it('rejeita data muito distante no futuro', async () => {
+      await expect(service.findWeek(userId, '2999-01-01')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(tasksRepo.find).not.toHaveBeenCalled();
+    });
+  });
+
   describe('create', () => {
     it('gera as ocorrências diárias de hoje até domingo', async () => {
       const dto: CreateTaskDto = {

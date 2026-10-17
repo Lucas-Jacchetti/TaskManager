@@ -17,6 +17,7 @@ describe('TasksController', () => {
     completeOccurrence: jest.fn(),
     uncompleteOccurrence: jest.fn(),
     removeOccurrence: jest.fn(),
+    findWeek: jest.fn()
   };
 
   const createdAt = new Date('2026-10-16T12:00:00Z');
@@ -150,5 +151,27 @@ describe('TasksController', () => {
       'occ-1',
     );
     expect(tasksService.remove).toHaveBeenCalledWith('user-1', 'task-1');
+  });
+
+  it('lista as ocorrências da semana no formato de resposta', async () => {
+    tasksService.findWeek.mockResolvedValue([
+      {
+        id: 'occ-1',
+        referenceDate: '2026-10-12',
+        createdAt,
+        task,
+        completions: [],
+      },
+    ]);
+
+    const result = await controller.findWeek('user-1', { date: '2026-10-12' });
+
+    expect(tasksService.findWeek).toHaveBeenCalledWith('user-1', '2026-10-12');
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: 'occ-1',
+      taskId: 'task-1',
+      completed: false,
+    });
   });
 });

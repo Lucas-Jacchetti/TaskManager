@@ -132,6 +132,37 @@ export class TasksService {
       .getMany();
   }
 
+  async findWeek(userId: string, date?: string): Promise<TaskOccurrence[]> {
+    const weekStart = getWeekStart(this.resolveToday(date));
+    await this.ensureOccurrencesForWeek(userId, weekStart, weekStart);
+
+    return this.occurrencesRepo
+      .createQueryBuilder('occurrence')
+      .innerJoinAndSelect('occurrence.task', 'task')
+      .leftJoinAndSelect('occurrence.completions', 'completion')
+      .where('task.userId = :userId', { userId })
+      .andWhere('task.deletedAt IS NULL')
+      .andWhere('occurrence.referenceDate BETWEEN :weekStart AND :weekEnd', {
+        weekStart,
+        weekEnd: addDays(weekStart, 6),
+      })
+      .andWhere(
+        '(task.type = :daily OR ' +
+          '(task.type = :custom AND ' +
+          'CAST(EXTRACT(DOW FROM occurrence.referenceDate) AS int) = ANY(task.daysOfWeek)) OR ' +
+          '(task.type = :weekly AND occurrence.referenceDate = :weekStart))',
+        {
+          daily: TaskType.DAILY,
+          custom: TaskType.CUSTOM,
+          weekly: TaskType.WEEKLY,
+        },
+      )
+      .orderBy('occurrence.referenceDate', 'ASC')
+      .addOrderBy('task.createdAt', 'ASC')
+      .addOrderBy('occurrence.id', 'ASC')
+      .getMany();
+  }
+
   async findAll(userId: string): Promise<Task[]> {
     return this.tasksRepo.find({
       where: { userId },

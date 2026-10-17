@@ -57,11 +57,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # deploy:
-  #   name: Deploy
-  #   needs: [test, security]
-  #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Disparar deploy do backend
-  #       run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+  deploy:
+    name: Deploy
+    needs: [test, security]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disparar deploy do backend
+        run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"

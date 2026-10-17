@@ -219,4 +219,27 @@ export class TasksController {
         TaskResponseDto.fromEntity(occurrence),
         );
     }
+
+
+
+
+    @Get('week')
+    @ApiOkResponse({
+        type: TaskResponseDto,
+        isArray: true,
+        description:
+            'Todas as ocorrências da semana (diárias, customizadas e semanais)',
+    })
+    @ApiBadRequestResponse({ description: 'Data inválida' })
+    @ApiUnauthorizedResponse({ description: 'Usuário não autenticado' })
+    async findWeek(
+        @CurrentUserId() userId: string,
+        @Query() { date }: DateQueryDto,
+    ): Promise<TaskResponseDto[]> {
+        const occurrences = await this.tasksService.findWeek(userId, date);
+
+        return occurrences.map((occurrence) =>
+            TaskResponseDto.fromEntity(occurrence),
+        );
+    }
 }
