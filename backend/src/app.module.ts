@@ -33,8 +33,8 @@ import { HealthController } from './features/health/health.controller';
     TasksModule,
     UsersModule,
     AuthModule,
-    HealthController,
   ],
+  controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}
