@@ -8,6 +8,7 @@ import { UsersModule } from './features/users/user.module';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { validateEnv } from './config/env.validation';
+import { HealthController } from './features/health/health.controller';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { validateEnv } from './config/env.validation';
     TasksModule,
     UsersModule,
     AuthModule,
+    HealthController,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
