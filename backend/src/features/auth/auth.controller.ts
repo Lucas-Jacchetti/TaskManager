@@ -51,7 +51,7 @@ export class AuthController {
         description: 'Autenticação realizada com sucesso; retorna o token JWT',
         schema: {
         example: {
-            access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+            access_token: '<token-jwt>',
         },
         },
     })
