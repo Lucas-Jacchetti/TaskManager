@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Testes e cobertura
+  backend tests:
+    name: Backend (testes e cobertura)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -32,6 +32,30 @@ jobs:
       - name: Testes unitários com cobertura mínima
         run: npm run test:cov -- --ci
 
+  frontend tests:
+    name: Frontend (build e testes)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Build (checagem de tipos)
+        run: npm run build
+
+      - name: Testes unitários com cobertura mínima
+        run: npm run test:cov
+
   security:
     name: Verificações de segurança
     runs-on: ubuntu-latest
@@ -44,10 +68,18 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: backend/package-lock.json
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
 
-      - name: Auditoria de dependências
+      - name: Auditoria de dependências (backend)
         working-directory: backend
+        run: |
+          npm ci
+          npm audit --omit=dev --audit-level=high
+
+      - name: Auditoria de dependências (frontend)
+        working-directory: frontend
         run: |
           npm ci
           npm audit --omit=dev --audit-level=high
@@ -58,10 +90,28 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   deploy:
-    name: Deploy
-    needs: [test, security]
+    name: Deploy do backend (Render)
+    needs: [backend tests, frontend tests, security]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-backend
+      cancel-in-progress: false
     steps:
-      - name: Disparar deploy do backend
-        run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+      - name: Disparar o deploy do commit testado
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: curl --fail --silent --show-error -X POST "${RENDER_DEPLOY_HOOK_URL}&ref=${GITHUB_SHA}"
+  # deploy-frontend:
+  #   name: Deploy do frontend (Vercel)
+  #   needs: [backend tests, frontend tests, security]
+  #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  #   runs-on: ubuntu-latest
+  #   concurrency:
+  #     group: deploy-frontend
+  #     cancel-in-progress: false
+  #   steps:
+  #     - name: Disparar o deploy
+  #       env:
+  #         VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+  #       run: curl --fail --silent --show-error -X POST "${VERCEL_DEPLOY_HOOK_URL}"
