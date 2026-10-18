@@ -102,16 +102,16 @@ jobs:
         env:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: curl --fail --silent --show-error -X POST "${RENDER_DEPLOY_HOOK_URL}&ref=${GITHUB_SHA}"
-  # deploy-frontend:
-  #   name: Deploy do frontend (Vercel)
-  #   needs: [backend-tests, frontend-tests, security]
-  #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-  #   runs-on: ubuntu-latest
-  #   concurrency:
-  #     group: deploy-frontend
-  #     cancel-in-progress: false
-  #   steps:
-  #     - name: Disparar o deploy
-  #       env:
-  #         VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
-  #       run: curl --fail --silent --show-error -X POST "${VERCEL_DEPLOY_HOOK_URL}"
+  deploy-frontend:
+    name: Deploy do frontend (Vercel)
+    needs: [backend-tests, frontend-tests, security]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-frontend
+      cancel-in-progress: false
+    steps:
+      - name: Disparar o deploy
+        env:
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: curl --fail --silent --show-error -X POST "${VERCEL_DEPLOY_HOOK_URL}"
