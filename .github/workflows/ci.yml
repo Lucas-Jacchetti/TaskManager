@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  backend tests:
+  backend-tests:
     name: Backend (testes e cobertura)
     runs-on: ubuntu-latest
     defaults:
@@ -32,7 +32,7 @@ jobs:
       - name: Testes unitários com cobertura mínima
         run: npm run test:cov -- --ci
 
-  frontend tests:
+  frontend-tests:
     name: Frontend (build e testes)
     runs-on: ubuntu-latest
     defaults:
@@ -91,7 +91,7 @@ jobs:
 
   deploy:
     name: Deploy do backend (Render)
-    needs: [backend tests, frontend tests, security]
+    needs: [backend-tests, frontend-tests, security]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency:
@@ -104,7 +104,7 @@ jobs:
         run: curl --fail --silent --show-error -X POST "${RENDER_DEPLOY_HOOK_URL}&ref=${GITHUB_SHA}"
   # deploy-frontend:
   #   name: Deploy do frontend (Vercel)
-  #   needs: [backend tests, frontend tests, security]
+  #   needs: [backend-tests, frontend-tests, security]
   #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
   #   runs-on: ubuntu-latest
   #   concurrency:
