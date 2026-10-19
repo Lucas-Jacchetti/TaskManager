@@ -11,17 +11,55 @@ interface Props {
 }
 
 export function DayCard({ date, isToday, items, onToggle }: Props) {
+  const completed = items.filter((item) => item.completed).length;
+
   return (
     <article
-      className={`min-h-36 rounded-xl border bg-white p-3 ${
-        isToday ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-slate-200'
+      className={`flex min-h-64 flex-col rounded-2xl border bg-white p-3 shadow-sm ${
+        isToday
+          ? 'border-emerald-300 ring-1 ring-emerald-300'
+          : 'border-slate-200'
       }`}
     >
-      <h2 className="mb-2 flex items-baseline gap-1.5 font-semibold">
-        {WEEKDAY_NAMES[getDayOfWeek(date)]}
-        <small className="font-normal text-slate-400">{dayMonth(date)}</small>
-      </h2>
-      <TaskList items={items} emptyText="Sem tarefas" onToggle={onToggle} />
+      <header className="mb-3 border-b border-slate-100 pb-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-slate-500">
+            {WEEKDAY_NAMES[getDayOfWeek(date)]}
+          </span>
+          {isToday && (
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-600">
+              Hoje
+            </span>
+          )}
+        </div>
+        <strong className="mt-1 block text-4xl font-semibold tracking-tight text-slate-800">
+          {dayMonth(date)}
+        </strong>
+      </header>
+
+      <div className="flex-1">
+        <TaskList
+          items={items}
+          emptyText="Sem tarefas"
+          emptyClassName="text-sm text-slate-300"
+          onToggle={onToggle}
+        />
+      </div>
+
+      <footer className="mt-3 text-xs text-slate-400">
+        {items.length === 0 ? (
+          'Seu dia está livre'
+        ) : (
+          <span className="inline-flex items-center gap-1">
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                completed === items.length ? 'bg-emerald-400' : 'bg-emerald-300'
+              }`}
+            />
+            {completed} de {items.length} concluída{items.length > 1 ? 's' : ''}
+          </span>
+        )}
+      </footer>
     </article>
   );
 }
