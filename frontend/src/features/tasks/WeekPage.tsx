@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { CheckCircle2, ClipboardList, LogOut, Plus } from 'lucide-react';
 import { addDays } from '../../lib/dates';
-import { authApi } from '../auth/api';
 import { DayCard } from './components/DayCard';
 import { TaskDialog } from './components/TaskDialog';
 import { TaskList } from './components/TaskList';
@@ -21,16 +20,8 @@ function monthYearLabel(date: string): string {
 
 export function WeekPage({ onLogout }: { onLogout: () => void }) {
   const week = useWeek();
-  const [userName, setUserName] = useState('');
   const [dialog, setDialog] = useState<'task' | 'weekly' | null>(null);
   const [editing, setEditing] = useState<Occurrence | null>(null);
-
-  useEffect(() => {
-    authApi
-      .me()
-      .then((user) => setUserName(user.name))
-      .catch(() => undefined);
-  }, []);
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(week.weekStart, i));
   const weeklyItems = week.items.filter((item) => item.type === 'weekly');
@@ -53,7 +44,6 @@ export function WeekPage({ onLogout }: { onLogout: () => void }) {
           </div>
 
           <div className="flex items-center gap-4">
-            {userName && <span className="text-sm text-slate-400">{userName}</span>}
             <button
               onClick={onLogout}
               aria-label="Sair"

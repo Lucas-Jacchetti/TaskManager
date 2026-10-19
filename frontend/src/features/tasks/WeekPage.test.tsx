@@ -1,14 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { WeekPage } from './WeekPage';
-import { authApi } from '../auth/api';
 import { useWeek } from './useWeek';
-
-vi.mock('../auth/api', () => ({
-  authApi: {
-    me: vi.fn(),
-  },
-}));
 
 vi.mock('./useWeek', () => ({
   useWeek: vi.fn(),
@@ -45,17 +38,11 @@ const weekState = {
 };
 
 describe('WeekPage', () => {
-  it('renderiza o cabeçalho, a tarefa diária e o usuário', async () => {
-    vi.mocked(authApi.me).mockResolvedValue({
-      id: 'user-1',
-      name: 'Ana',
-      email: 'ana@exemplo.com',
-    });
+  it('renderiza o cabeçalho e a tarefa diária', () => {
     vi.mocked(useWeek).mockReturnValue(weekState);
 
     render(<WeekPage onLogout={vi.fn()} />);
 
-    expect(await screen.findByText('Ana')).toBeInTheDocument();
     expect(screen.getByText('Minhas tarefas')).toBeInTheDocument();
     expect(screen.getByText('Beber água')).toBeInTheDocument();
     expect(screen.getByText('Sem tarefas semanais')).toBeInTheDocument();
