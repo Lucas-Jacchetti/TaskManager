@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, ClipboardList, ListTodo, LogOut, Plus } from 'lucide-react';
+import { CheckCircle2, ClipboardList, LogOut, Plus } from 'lucide-react';
 import { addDays } from '../../lib/dates';
 import { authApi } from '../auth/api';
 import { DayCard } from './components/DayCard';
+import { TaskDialog } from './components/TaskDialog';
 import { TaskList } from './components/TaskList';
 import { WeekNav } from './components/WeekNav';
 import { useWeek } from './useWeek';
+import type { Occurrence } from './types';
 
 function monthYearLabel(date: string): string {
   const [year, month, day] = date.split('-').map(Number);
@@ -20,6 +22,8 @@ function monthYearLabel(date: string): string {
 export function WeekPage({ onLogout }: { onLogout: () => void }) {
   const week = useWeek();
   const [userName, setUserName] = useState('');
+  const [dialog, setDialog] = useState<'task' | 'weekly' | null>(null);
+  const [editing, setEditing] = useState<Occurrence | null>(null);
 
   useEffect(() => {
     authApi
@@ -36,11 +40,8 @@ export function WeekPage({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="min-h-screen bg-[#f3f5fd]">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex w-full max-w-305 items-center justify-between px-6 py-5">
+        <div className="mx-auto flex w-full max-w-360 items-center justify-between px-6 py-5">
           <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-100 text-emerald-500">
-              <ListTodo size={20} />
-            </div>
             <div>
               <h1 className="text-[36px] font-semibold tracking-tight text-slate-800">
                 Minhas tarefas
@@ -65,7 +66,7 @@ export function WeekPage({ onLogout }: { onLogout: () => void }) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-305 px-6 pb-6 pt-8">
+      <main className="mx-auto w-full max-w-360 px-6 pb-6 pt-8">
         <section className="mb-5 flex items-center justify-between">
           <div>
             <h2 className="text-[34px] font-semibold tracking-tight text-slate-800">
@@ -78,7 +79,10 @@ export function WeekPage({ onLogout }: { onLogout: () => void }) {
           </div>
 
           <div className="flex items-center gap-3">
-            <button className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-600">
+            <button
+              onClick={() => setDialog('task')}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-sky-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-600"
+            >
               <Plus size={16} />
               Nova tarefa
             </button>
@@ -116,6 +120,10 @@ export function WeekPage({ onLogout }: { onLogout: () => void }) {
                     (item) => item.type !== 'weekly' && item.referenceDate === day,
                   )}
                   onToggle={week.toggle}
+                  onDelete={(occurrence) => {
+                    void week.remove(occurrence.taskId).catch(() => undefined);
+                  }}
+                  onEdit={setEditing}
                 />
               ))}
             </section>
@@ -131,7 +139,7 @@ export function WeekPage({ onLogout }: { onLogout: () => void }) {
                 
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div>
                 {weeklyItems.length === 0 ? (
                   <div className="flex min-h-60 flex-col items-center justify-center text-center">
                     <div className="mb-4 grid h-12 w-12 place-items-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-400">
@@ -145,7 +153,10 @@ export function WeekPage({ onLogout }: { onLogout: () => void }) {
                       <br />
                       Crie uma tarefa para começar a planejar.
                     </p>
-                    <button className="mt-4 inline-flex cursor-pointer items-center gap-1 text-sm font-semibold text-emerald-500 transition hover:text-emerald-600">
+                    <button
+                      onClick={() => setDialog('weekly')}
+                      className="mt-4 inline-flex cursor-pointer items-center gap-1 text-sm font-semibold text-sky-500 transition hover:text-sky-600"
+                    >
                       <Plus size={14} />
                       Adicionar tarefa semanal
                     </button>
@@ -155,6 +166,11 @@ export function WeekPage({ onLogout }: { onLogout: () => void }) {
                     items={weeklyItems}
                     emptyText="Sem tarefas semanais"
                     onToggle={week.toggle}
+                    onDelete={(occurrence) => {
+                      void week.remove(occurrence.taskId).catch(() => undefined);
+                    }}
+                    onEdit={setEditing}
+                    weekly
                     className="flex flex-col gap-3"
                   />
                 )}
@@ -169,7 +185,7 @@ export function WeekPage({ onLogout }: { onLogout: () => void }) {
                   Pendente
                 </span>
                 <span className="inline-flex items-center gap-1">
-                  <CheckCircle2 size={14} className="text-emerald-400" />
+                  <CheckCircle2 size={14} className="text-emerald-300" />
                   Concluída
                 </span>
               </div>
@@ -177,6 +193,22 @@ export function WeekPage({ onLogout }: { onLogout: () => void }) {
           </>
         )}
       </main>
+
+      {dialog && (
+        <TaskDialog
+          weeklyOnly={dialog === 'weekly'}
+          onClose={() => setDialog(null)}
+          onCreate={week.create}
+        />
+      )}
+      {editing && (
+        <TaskDialog
+          initialOccurrence={editing}
+          onClose={() => setEditing(null)}
+          onCreate={week.create}
+          onUpdate={week.update}
+        />
+      )}
     </div>
   );
 }

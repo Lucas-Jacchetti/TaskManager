@@ -8,16 +8,18 @@ interface Props {
   isToday: boolean;
   items: Occurrence[];
   onToggle: (occurrence: Occurrence) => void;
+  onDelete: (occurrence: Occurrence) => void;
+  onEdit: (occurrence: Occurrence) => void;
 }
 
-export function DayCard({ date, isToday, items, onToggle }: Props) {
+export function DayCard({ date, isToday, items, onToggle, onDelete, onEdit }: Props) {
   const completed = items.filter((item) => item.completed).length;
 
   return (
     <article
       className={`flex min-h-64 flex-col rounded-2xl border bg-white p-3 shadow-sm ${
         isToday
-          ? 'border-emerald-300 ring-1 ring-emerald-300'
+          ? 'border-sky-300 ring-1 ring-sky-300'
           : 'border-slate-200'
       }`}
     >
@@ -27,7 +29,7 @@ export function DayCard({ date, isToday, items, onToggle }: Props) {
             {WEEKDAY_NAMES[getDayOfWeek(date)]}
           </span>
           {isToday && (
-            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-600">
+            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-600">
               Hoje
             </span>
           )}
@@ -43,6 +45,9 @@ export function DayCard({ date, isToday, items, onToggle }: Props) {
           emptyText="Sem tarefas"
           emptyClassName="text-sm text-slate-300"
           onToggle={onToggle}
+          onDelete={onDelete}
+          detailsMode="modal"
+          onEdit={onEdit}
         />
       </div>
 
@@ -53,7 +58,7 @@ export function DayCard({ date, isToday, items, onToggle }: Props) {
           <span className="inline-flex items-center gap-1">
             <span
               className={`h-1.5 w-1.5 rounded-full ${
-                completed === items.length ? 'bg-emerald-400' : 'bg-emerald-300'
+                completed === items.length ? 'bg-emerald-400' : 'bg-yellow-400'
               }`}
             />
             {completed} de {items.length} concluída{items.length > 1 ? 's' : ''}

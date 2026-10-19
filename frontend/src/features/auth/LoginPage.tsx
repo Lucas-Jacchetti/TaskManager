@@ -3,7 +3,7 @@ import { errorMessage, setToken } from '../../lib/http';
 import { authApi } from './api';
 
 const inputClass =
-  'rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200';
+  'rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200';
 
 export function LoginPage({ onLogin }: { onLogin: () => void }) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -96,7 +96,7 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
         <button
           type="submit"
           disabled={loading}
-          className="cursor-pointer rounded-lg bg-emerald-500 px-3 py-2 font-medium text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+          className="cursor-pointer rounded-lg bg-sky-500 px-3 py-2 font-medium text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? 'Aguarde...' : isRegister ? 'Cadastrar' : 'Entrar'}
         </button>
@@ -104,9 +104,9 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
         <button
           type="button"
           onClick={toggleMode}
-          className="cursor-pointer text-sm text-emerald-600 hover:underline"
+          className="cursor-pointer text-sm text-sky-600 hover:underline"
         >
-          {isRegister ? 'Já tenho conta' : 'Criar uma conta'}
+          {isRegister ? 'Fazer Login' : 'Criar uma conta'}
         </button>
       </form>
     </main>

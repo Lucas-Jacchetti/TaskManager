@@ -24,6 +24,8 @@ describe('DayCard', () => {
         isToday
         items={[occurrence]}
         onToggle={vi.fn()}
+        onDelete={vi.fn()}
+        onEdit={vi.fn()}
       />,
     );
 
@@ -40,6 +42,8 @@ describe('DayCard', () => {
         isToday={false}
         items={[]}
         onToggle={vi.fn()}
+        onDelete={vi.fn()}
+        onEdit={vi.fn()}
       />,
     );
 
@@ -56,10 +60,44 @@ describe('DayCard', () => {
         isToday={false}
         items={[occurrence]}
         onToggle={onToggle}
+        onDelete={vi.fn()}
+        onEdit={vi.fn()}
       />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Desmarcar tarefa' }));
     expect(onToggle).toHaveBeenCalledWith(occurrence);
+  });
+
+  it('usa amarelo quando o progresso está incompleto', () => {
+    const pendingOccurrence = { ...occurrence, id: 'occurrence-2', completed: false };
+    const { container } = render(
+      <DayCard
+        date="2026-10-19"
+        isToday={false}
+        items={[occurrence, pendingOccurrence]}
+        onToggle={vi.fn()}
+        onDelete={vi.fn()}
+        onEdit={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector('.bg-yellow-400')).toBeInTheDocument();
+    expect(container.querySelector('.bg-emerald-400')).not.toBeInTheDocument();
+  });
+
+  it('usa verde quando todas as tarefas estão concluídas', () => {
+    const { container } = render(
+      <DayCard
+        date="2026-10-19"
+        isToday={false}
+        items={[occurrence]}
+        onToggle={vi.fn()}
+        onDelete={vi.fn()}
+        onEdit={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector('.bg-emerald-400')).toBeInTheDocument();
   });
 });

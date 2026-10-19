@@ -17,20 +17,37 @@ const occurrence: Occurrence = {
 };
 
 describe('TaskItem', () => {
-  it('renderiza a tarefa e alterna os detalhes', () => {
-    render(<TaskItem occurrence={occurrence} onToggle={vi.fn()} />);
+  it('renderiza o menu de opções da tarefa', () => {
+    const onDetails = vi.fn();
+    const onDelete = vi.fn();
+    render(
+      <TaskItem
+        occurrence={occurrence}
+        onToggle={vi.fn()}
+        onDetails={onDetails}
+        onDelete={onDelete}
+      />,
+    );
 
     expect(screen.getByText('Beber água')).toBeInTheDocument();
-    expect(screen.queryByText('Oito copos por dia')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Detalhes' }));
-    expect(screen.getByText('Oito copos por dia')).toBeInTheDocument();
-    expect(screen.getByText('Diária')).toBeInTheDocument();
-    expect(screen.getByText('Todas as semanas')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Opções da tarefa'));
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes' }));
+    fireEvent.click(screen.getByLabelText('Opções da tarefa'));
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir tarefa' }));
+    expect(onDetails).toHaveBeenCalledWith(occurrence);
+    expect(onDelete).toHaveBeenCalledWith(occurrence);
   });
 
   it('notifica quando a tarefa é alternada', () => {
     const onToggle = vi.fn();
-    render(<TaskItem occurrence={occurrence} onToggle={onToggle} />);
+    render(
+      <TaskItem
+        occurrence={occurrence}
+        onToggle={onToggle}
+        onDetails={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Concluir tarefa' }));
     expect(onToggle).toHaveBeenCalledWith(occurrence);
@@ -41,6 +58,8 @@ describe('TaskItem', () => {
       <TaskItem
         occurrence={{ ...occurrence, completed: true }}
         onToggle={vi.fn()}
+        onDetails={vi.fn()}
+        onDelete={vi.fn()}
       />,
     );
 

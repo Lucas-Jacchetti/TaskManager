@@ -88,7 +88,7 @@ describe('LoginPage', () => {
 
     expect(screen.getByLabelText('E-mail')).toHaveValue('ana@exemplo.com');
     expect(screen.getByLabelText('Nome')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Já tenho conta' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fazer Login' }));
     expect(screen.queryByLabelText('Nome')).not.toBeInTheDocument();
   });
 });

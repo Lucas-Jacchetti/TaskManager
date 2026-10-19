@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { addDays, getWeekStart, today } from '../../lib/dates';
 import { errorMessage } from '../../lib/http';
 import { tasksApi } from './api';
-import type { Occurrence } from './types';
+import type { CreateTaskInput, Occurrence } from './types';
 
 const MAX_DAYS_AHEAD = 56;
 
@@ -24,22 +24,55 @@ export function useWeek() {
 
   useEffect(() => {
     let cancelled = false;
-    tasksApi
-      .week(weekStart)
-      .then((loaded) => {
-        if (cancelled) return;
-        setError(null);
-        setData({ weekStart, items: loaded });
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(errorMessage(err));
-        setData({ weekStart, items: [] });
-      });
+    loadWeek(weekStart, () => cancelled);
     return () => {
       cancelled = true;
     };
   }, [weekStart]);
+
+  async function loadWeek(date: string, isCancelled = () => false) {
+    try {
+      const loaded = await tasksApi.week(date);
+      if (isCancelled()) return;
+      setError(null);
+      setData({ weekStart: date, items: loaded });
+    } catch (err) {
+      if (isCancelled()) return;
+      setError(errorMessage(err));
+      setData({ weekStart: date, items: [] });
+    }
+  }
+
+  async function create(input: CreateTaskInput) {
+    try {
+      await tasksApi.create(weekStart, input);
+      await loadWeek(weekStart);
+    } catch (err) {
+      setError(errorMessage(err));
+      throw err;
+    }
+  }
+
+  async function remove(taskId: string) {
+    try {
+      await tasksApi.remove(taskId);
+      await loadWeek(weekStart);
+    } catch (err) {
+      setError(errorMessage(err));
+      throw err;
+    }
+
+  }
+
+  async function update(taskId: string, input: CreateTaskInput) {
+    try {
+      await tasksApi.update(taskId, input);
+      await loadWeek(weekStart);
+    } catch (err) {
+      setError(errorMessage(err));
+      throw err;
+    }
+  }
 
   function setCompleted(id: string, completed: boolean) {
     setData(
@@ -77,6 +110,9 @@ export function useWeek() {
     goPrev: () => setWeekStart(addDays(weekStart, -7)),
     goNext: () => setWeekStart(addDays(weekStart, 7)),
     goToday: () => setWeekStart(getWeekStart(todayDate)),
+    create,
+    remove,
+    update,
     toggle,
   };
 }

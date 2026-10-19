@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { WeekPage } from './WeekPage';
 import { authApi } from '../auth/api';
@@ -38,6 +38,9 @@ const weekState = {
   goPrev: vi.fn(),
   goNext: vi.fn(),
   goToday: vi.fn(),
+  create: vi.fn(),
+  remove: vi.fn(),
+  update: vi.fn(),
   toggle: vi.fn(),
 };
 
@@ -76,5 +79,67 @@ describe('WeekPage', () => {
     render(<WeekPage onLogout={vi.fn()} />);
 
     expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível carregar');
+  });
+
+  it('abre o modal de nova tarefa e encaminha a criação', async () => {
+    const create = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(useWeek).mockReturnValue({ ...weekState, create });
+
+    render(<WeekPage onLogout={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Nova tarefa' }));
+    expect(screen.getByRole('heading', { name: 'Nova tarefa' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Título'), {
+      target: { value: 'Ler' },
+    });
+    fireEvent.change(screen.getByLabelText('Tipo'), {
+      target: { value: 'daily' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Criar tarefa' }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith({
+        title: 'Ler',
+        description: null,
+        type: 'daily',
+        recurrence: 'ONCE',
+      }),
+    );
+  });
+
+  it('abre o modal de tarefa semanal', () => {
+    vi.mocked(useWeek).mockReturnValue({ ...weekState, items: [] });
+
+    render(<WeekPage onLogout={vi.fn()} />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Adicionar tarefa semanal' }),
+    );
+
+    expect(
+      screen.getByRole('heading', { name: 'Adicionar tarefa semanal' }),
+    ).toBeInTheDocument();
+  });
+
+  it('exclui a tarefa pelo taskId', async () => {
+    const remove = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(useWeek).mockReturnValue({ ...weekState, remove });
+
+    render(<WeekPage onLogout={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText('Opções da tarefa'));
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir tarefa' }));
+
+    await waitFor(() => expect(remove).toHaveBeenCalledWith('task-1'));
+  });
+
+  it('abre os detalhes da tarefa do dia como modal', () => {
+    vi.mocked(useWeek).mockReturnValue(weekState);
+
+    render(<WeekPage onLogout={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText('Opções da tarefa'));
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes' }));
+
+    expect(screen.getByText('Detalhes da tarefa')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Editar tarefa' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fechar detalhes' })).toBeInTheDocument();
   });
 });

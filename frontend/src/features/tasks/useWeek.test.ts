@@ -6,6 +6,9 @@ import { useWeek } from './useWeek';
 vi.mock('./api', () => ({
   tasksApi: {
     week: vi.fn(),
+    create: vi.fn(),
+    remove: vi.fn(),
+    update: vi.fn(),
     complete: vi.fn(),
     uncomplete: vi.fn(),
   },
@@ -31,6 +34,9 @@ const occurrence = {
 describe('useWeek', () => {
   beforeEach(() => {
     vi.mocked(tasksApi.week).mockReset();
+    vi.mocked(tasksApi.create).mockReset();
+    vi.mocked(tasksApi.remove).mockReset();
+    vi.mocked(tasksApi.update).mockReset();
     vi.mocked(tasksApi.complete).mockReset();
     vi.mocked(tasksApi.uncomplete).mockReset();
   });
@@ -79,7 +85,9 @@ describe('useWeek', () => {
     });
 
     expect(result.current.items[0].completed).toBe(false);
-    expect(result.current.error).toBe('Erro ao carregar tarefas');
+    await waitFor(() =>
+      expect(result.current.error).toBe('Erro ao carregar tarefas'),
+    );
   });
 
   it('navega para a semana anterior e posterior', async () => {
@@ -96,5 +104,75 @@ describe('useWeek', () => {
     act(() => result.current.goNext());
     await waitFor(() => expect(result.current.weekStart).toBe(initialWeek));
     expect(previousWeek).not.toBe(initialWeek);
+  });
+
+  it('cria uma tarefa e recarrega a semana', async () => {
+    vi.mocked(tasksApi.week)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([occurrence]);
+    vi.mocked(tasksApi.create).mockResolvedValue(undefined);
+    const { result } = renderHook(() => useWeek());
+    const input = {
+      title: 'Beber água',
+      description: null,
+      type: 'daily' as const,
+      recurrence: 'RECURRING' as const,
+    };
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => {
+      await result.current.create(input);
+    });
+
+    expect(tasksApi.create).toHaveBeenCalledWith(
+      result.current.weekStart,
+      input,
+    );
+    expect(result.current.items).toEqual([occurrence]);
+  });
+
+  it('remove uma tarefa e recarrega a semana', async () => {
+    vi.mocked(tasksApi.week)
+      .mockResolvedValueOnce([occurrence])
+      .mockResolvedValueOnce([]);
+    vi.mocked(tasksApi.remove).mockResolvedValue(undefined);
+    const { result } = renderHook(() => useWeek());
+
+    await waitFor(() => expect(result.current.items).toEqual([occurrence]));
+    await act(async () => {
+      await result.current.remove('task-1');
+    });
+
+    expect(tasksApi.remove).toHaveBeenCalledWith('task-1');
+    expect(result.current.items).toEqual([]);
+  });
+
+  it('expõe erro quando criar ou remover falha', async () => {
+    vi.mocked(tasksApi.week).mockResolvedValue([]);
+    vi.mocked(tasksApi.create).mockRejectedValue(new Error('falha'));
+    vi.mocked(tasksApi.remove).mockRejectedValue(new Error('falha'));
+    const { result } = renderHook(() => useWeek());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => {
+      await expect(
+        result.current.create({
+          title: 'Tarefa',
+          description: null,
+          type: 'daily',
+          recurrence: 'ONCE',
+        }),
+      ).rejects.toThrow();
+    });
+    await waitFor(() =>
+      expect(result.current.error).toBe('Erro ao carregar tarefas'),
+    );
+
+    await act(async () => {
+      await expect(result.current.remove('task-1')).rejects.toThrow();
+    });
+    await waitFor(() =>
+      expect(result.current.error).toBe('Erro ao carregar tarefas'),
+    );
   });
 });

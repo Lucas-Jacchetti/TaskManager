@@ -1,6 +1,14 @@
 export type TaskType = 'daily' | 'weekly' | 'custom';
 export type TaskRecurrence = 'ONCE' | 'RECURRING';
 
+export interface CreateTaskInput {
+  title: string;
+  description: string | null;
+  type: TaskType;
+  recurrence: TaskRecurrence;
+  daysOfWeek?: number[];
+}
+
 export interface Occurrence {
   id: string;
   taskId: string;
