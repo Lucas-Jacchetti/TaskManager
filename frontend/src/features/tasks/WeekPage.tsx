@@ -50,7 +50,7 @@ export function WeekPage({ onLogout }: { onLogout: () => void }) {
               className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-red-400 transition hover:text-slate-600"
             >
               <LogOut size={16} />
-              Log Out
+              Sair
             </button>
           </div>
         </div>
@@ -63,7 +63,7 @@ export function WeekPage({ onLogout }: { onLogout: () => void }) {
               {monthTitle}
             </h2>
             <p className="mt-0.5 text-sm text-slate-400">
-              {week.items.length} tarefas na semana • {completedWeekCount} concluída
+              {week.items.length} Tarefas na semana • {completedWeekCount} Concluída
               {completedWeekCount === 1 ? '' : 's'}
             </p>
           </div>
@@ -118,7 +118,21 @@ export function WeekPage({ onLogout }: { onLogout: () => void }) {
               ))}
             </section>
 
-            <section className="mt-6">
+            <footer className="mt-3 flex items-center justify-between text-sm text-slate-300">
+              <p></p>
+              <div className="flex items-center gap-4">
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2.5 w-2.5 rounded-full border border-slate-400" />
+                  Pendente
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <CheckCircle2 size={14} className="text-emerald-300" />
+                  Concluída
+                </span>
+              </div>
+            </footer>
+
+            <section className="mt-3">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="inline-flex items-center gap-2 text-2xl font-semibold text-slate-800">
                   Tarefas da semana
@@ -167,19 +181,6 @@ export function WeekPage({ onLogout }: { onLogout: () => void }) {
               </div>
             </section>
 
-            <footer className="mt-3 flex items-center justify-between text-sm text-slate-300">
-              <p></p>
-              <div className="flex items-center gap-4">
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-full border border-slate-400" />
-                  Pendente
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <CheckCircle2 size={14} className="text-emerald-300" />
-                  Concluída
-                </span>
-              </div>
-            </footer>
           </>
         )}
       </main>
