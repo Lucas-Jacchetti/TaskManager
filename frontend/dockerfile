@@ -1,0 +1,15 @@
+# ---- build ----
+FROM node:22-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+# O Vite embute a URL da API no código durante o build
+ARG VITE_API_URL=http://localhost:3000
+ENV VITE_API_URL=$VITE_API_URL
+RUN npm run build
+
+# ---- servidor estático ----
+FROM nginxinc/nginx-unprivileged:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 8080
