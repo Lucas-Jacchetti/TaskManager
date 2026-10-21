@@ -36,5 +36,98 @@ services:
     ports:
       - "5173:8080"
 
+  sonar-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: sonar
+      POSTGRES_DB: sonar
+    volumes:
+      - sonar-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonar -d sonar"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  sonarqube:
+    image: sonarqube:community
+    depends_on:
+      sonar-db:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonar
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: sonar
+      SONAR_FORCEAUTHENTICATION: "false"
+    ports:
+      - "9000:9000"
+    volumes:
+      - sonar-data:/opt/sonarqube/data
+      - sonar-extensions:/opt/sonarqube/extensions
+      - sonar-logs:/opt/sonarqube/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  sonar-init:
+    image: curlimages/curl
+    user: root
+    depends_on:
+      sonarqube:
+        condition: service_healthy
+    restart: "no"
+    volumes:
+      - sonar-token:/token
+    entrypoint:
+      - sh
+      - -c
+      - |
+        curl -s -u admin:admin -X POST "http://sonarqube:9000/api/user_tokens/revoke?name=compose-scan"
+        curl -s -u admin:admin -X POST "http://sonarqube:9000/api/user_tokens/generate?name=compose-scan" \
+          | sed -n 's/.*"token":"\([^"]*\)".*/\1/p' > /token/sonar-token
+
+  sonar-coverage:
+    image: node:24-slim
+    working_dir: /usr/src
+    volumes:
+      - .:/usr/src
+      - backend-node-modules:/usr/src/backend/node_modules
+      - frontend-node-modules:/usr/src/frontend/node_modules
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        cd backend && npm ci && npm run test:cov
+        cd ../frontend && npm ci && npm run test:cov
+
+  sonar-scanner:
+    image: sonarsource/sonar-scanner-cli
+    depends_on:
+      sonar-init:
+        condition: service_completed_successfully
+      sonar-coverage:
+        condition: service_completed_successfully
+    environment:
+      SONAR_HOST_URL: http://sonarqube:9000
+    volumes:
+      - .:/usr/src
+      - sonar-token:/token:ro
+    entrypoint:
+      - sh
+      - -c
+      - SONAR_TOKEN=$$(cat /token/sonar-token) sonar-scanner
+
 volumes:
   db-data:
+  sonar-db-data:
+  sonar-data:
+  sonar-extensions:
+  sonar-logs:
+  sonar-token:
+  backend-node-modules:
+  frontend-node-modules:
