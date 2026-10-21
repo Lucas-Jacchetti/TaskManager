@@ -128,7 +128,7 @@ jobs:
 
   deploy:
     name: Deploy do backend (Render)
-    needs: [backend-tests, frontend-tests, security]
+    needs: [backend-tests, frontend-tests, security, trivy]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency:

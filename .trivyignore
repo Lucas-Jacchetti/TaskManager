@@ -1,0 +1,10 @@
+# Pacotes internos do npm embutido na imagem node, não usados pela aplicação em runtime
+CVE-2026-102276
+CVE-2026-102278
+CVE-2026-13149
+CVE-2026-14257
+CVE-2026-69152
+CVE-2026-69192
+CVE-2026-9496
+CVE-2026-33671
+CVE-2026-48815
